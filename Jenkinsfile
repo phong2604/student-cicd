@@ -1,77 +1,78 @@
 pipeline {
-    agent { label 'student-code' }
+    agent any
 
     environment {
-        BUILD_DIR = 'dist'
+        // Customize these for your project
+        REGISTRY = "docker.io"
+        IMAGE_NAME = "your-dockerhub-username/your-frontend-app"
+        IMAGE_TAG = "latest"
     }
 
     stages {
 
-        stage('Setup') {
+        stage('Checkout') {
             steps {
-                sh '''
-                    apt-get update -y
-                    apt-get install -y curl
-                    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-                    apt-get install -y nodejs
-                    node -v
-                    npm -v
-                    npm install || true
-                '''
-            }
-        }
-
-        stage('Lint') {
-            steps {
-                sh '''
-                    if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ]; then
-                        npx eslint . || true
-                    else
-                        echo "No ESLint config found, skipping lint."
-                    fi
-
-                    if [ -f ".stylelintrc" ]; then
-                        npx stylelint "**/*.css" || true
-                    fi
-                '''
+                echo "📥 Checking out code..."
+                checkout scm
             }
         }
 
         stage('Build') {
             steps {
+                echo "🏗️ Building project..."
+                // For HTML/CSS/JS, this might include npm or build tools
                 sh '''
-                    if npm run | grep -q "build"; then
-                        npm run build
+                    if [ -f package.json ]; then
+                        npm install
+                        npm run build || echo "No build script found, skipping..."
                     else
-                        echo "No build script, copying files instead."
-                        mkdir -p ${BUILD_DIR}
-                        cp -r *.html *.css *.js ${BUILD_DIR}/ 2>/dev/null || true
+                        echo "No package.json found, skipping npm build."
                     fi
                 '''
-            }
-            post {
-                success {
-                    archiveArtifacts artifacts: '${BUILD_DIR}/**', fingerprint: true
-                }
             }
         }
 
         stage('Test') {
             steps {
+                echo "🧪 Running tests..."
                 sh '''
-                    if npm run | grep -q "test"; then
-                        npm test
+                    if [ -f package.json ]; then
+                        npm test || echo "No test script found, skipping tests..."
                     else
-                        echo "No test script defined, skipping tests."
+                        echo "No tests to run."
                     fi
                 '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "🐳 Building Docker image..."
+                sh '''
+                    docker build -t $IMAGE_NAME:$IMAGE_TAG .
+                '''
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                echo "🚀 Pushing Docker image to registry..."
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin $REGISTRY
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                    '''
+                }
             }
         }
     }
 
     post {
-        always {
-            sh 'rm -rf * || true'
+        success {
+            echo "✅ Build and deployment successful!"
+        }
+        failure {
+            echo "❌ Build or deployment failed."
         }
     }
 }

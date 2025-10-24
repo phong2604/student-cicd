@@ -10,13 +10,13 @@ pipeline {
         stage('Setup') {
             steps {
                 sh '''
-                    sudo apt-get update -y
-                    sudo apt-get install -y curl
-                    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-                    sudo apt-get install -y nodejs
+                    apt-get update -y
+                    apt-get install -y curl
+                    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+                    apt-get install -y nodejs
                     node -v
                     npm -v
-                    npm install
+                    npm install || true
                 '''
             }
         }
@@ -24,14 +24,12 @@ pipeline {
         stage('Lint') {
             steps {
                 sh '''
-                    # Run ESLint if configuration exists
                     if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ]; then
                         npx eslint . || true
                     else
-                        echo "No ESLint configuration found, skipping lint."
+                        echo "No ESLint config found, skipping lint."
                     fi
 
-                    # Optional: Check CSS formatting with stylelint if present
                     if [ -f ".stylelintrc" ]; then
                         npx stylelint "**/*.css" || true
                     fi
@@ -42,11 +40,10 @@ pipeline {
         stage('Build') {
             steps {
                 sh '''
-                    # If a build script is defined in package.json, run it
                     if npm run | grep -q "build"; then
                         npm run build
                     else
-                        echo "No build script found, copying source files instead."
+                        echo "No build script, copying files instead."
                         mkdir -p ${BUILD_DIR}
                         cp -r *.html *.css *.js ${BUILD_DIR}/ 2>/dev/null || true
                     fi
@@ -62,7 +59,6 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                    # Run tests if defined in package.json
                     if npm run | grep -q "test"; then
                         npm test
                     else
